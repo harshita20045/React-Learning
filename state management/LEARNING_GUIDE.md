@@ -12,7 +12,7 @@ Welcome to the ultimate learning guide for **FlowState**, your personal producti
 7. [Context API](#section-7-context-api)
 8. [useReducer](#section-8-usereducer)
 9. [Rendering Performance and Correctness](#section-9-rendering-performance-and-correctness)
-10. [Advanced State Management and Architecture](#section-10-advanced-state-management-and-architecture)
+10. [Redux Toolkit (RTK) & Global State](#section-10-redux-toolkit-rtk--global-state)
 11. [Practical Learning Roadmap](#practical-learning-roadmap)
 12. [Debugging Exercises](#debugging-exercises)
 13. [Interview Preparation Bank](#interview-preparation-bank)
@@ -21,26 +21,33 @@ Welcome to the ultimate learning guide for **FlowState**, your personal producti
 ---
 
 ## Section 1: Project Overview
-**FlowState** is a productivity dashboard combining project management, task tracking, and a Pomodoro-style focus timer. It is built using **React, JSX, Vite, and plain CSS**. No massive UI libraries, no Tailwind, no Redux—just pure React to help you master the fundamentals.
+**FlowState** is a productivity dashboard combining project management, task tracking, and a Pomodoro-style focus timer. It is built using **React 19, JSX, Vite, Redux Toolkit, useReducer, Context API, and plain CSS** to help you master state management from simple primitives to enterprise architecture.
 
 ### Project Structure
 ```text
 src/
 ├── components/
-│   ├── AppHeader.jsx      # Top navigation, theme toggle
-│   ├── Sidebar.jsx        # Left navigation menu
-│   ├── Dashboard.jsx      # Main content area
-│   ├── StatCard.jsx       # Reusable card for statistics
-│   ├── ProjectCard.jsx    # Card displaying a project
-│   └── TaskPreview.jsx    # Row displaying a task
+│   ├── AppHeader.jsx              # Top navigation, theme toggle, active tab
+│   ├── Sidebar.jsx                # Left navigation menu with Redux badges
+│   ├── Dashboard.jsx              # Main content area with Redux filters & task lists
+│   ├── FocusTimer.jsx             # Pomodoro timer (useReducer state machine)
+│   ├── StateArchitectureGuide.jsx # Interactive state visualizer
+│   ├── StatCard.jsx               # Reusable card for statistics
+│   ├── ProjectCard.jsx            # Project card with progress bar (Redux entity)
+│   └── TaskPreview.jsx            # Row displaying task with toggle/delete
 ├── context/
-│   ├── TaskContext.jsx    # Global state & reducer for tasks
-│   └── ThemeContext.jsx   # Global state for dark mode
+│   ├── TaskContext.jsx            # Task domain state managed via useReducer
+│   └── ThemeContext.jsx           # Global dark/light theme via Context API
+├── store/
+│   ├── index.js                   # Redux Toolkit store (configureStore)
+│   └── slices/
+│       ├── projectsSlice.js       # Projects state, CRUD, & tasks sync
+│       └── filtersSlice.js        # Active tab, search, priority filter
 ├── data/
-│   └── initialData.js     # Fallback sample data
-├── App.jsx                # Main layout composition
-├── main.jsx               # Vite entry point
-└── index.css              # Global styles and theme variables
+│   └── initialData.js             # Fallback sample data
+├── App.jsx                        # Layout composition
+├── main.jsx                       # Redux Provider & Context Providers entry
+└── index.css                      # Global styles and theme variables
 ```
 
 ### Installation and Running
@@ -220,20 +227,56 @@ graph TD
 ## Section 8: useReducer
 
 ### What it is
-An alternative to `useState` for complex logic. Components `dispatch` an action object (`{ type: 'TASK_ADDED', payload: '...' }`), and a pure reducer function calculates the new state.
+`useReducer` is an alternative to `useState` built directly into React for managing complex or interdependent state transitions. Instead of directly calling state setters, components **`dispatch`** an action object (`{ type: 'TASK_ADDED', payload: ... }`), and a **pure reducer function** calculates the new state.
 
-### FlowState Example
-`TaskContext.jsx` manages all tasks using `useReducer`.
+FlowState implements `useReducer` in two distinct, real-world patterns:
 
-### Code Example
+#### Pattern A: Domain State with Context (`src/context/TaskContext.jsx`)
+Manages task collection operations (create, toggle status, delete, clear completed) with localStorage persistence and lazy initialization.
+
 ```jsx
 // src/context/TaskContext.jsx
-const taskReducer = (state, action) => {
+export const taskReducer = (state, action) => {
   switch (action.type) {
+    case 'TASK_ADDED':
+      return [{ ...action.payload, completed: false }, ...state];
+    case 'TASK_TOGGLED':
+      return state.map(task => 
+        task.id === action.payload ? { ...task, completed: !task.completed } : task
+      );
     case 'TASK_DELETED':
       return state.filter(task => task.id !== action.payload);
+    case 'TASKS_CLEAR_COMPLETED':
+      return state.filter(task => !task.completed);
     default:
       return state;
+  }
+};
+```
+
+#### Pattern B: Local Finite State Machine (`src/components/FocusTimer.jsx`)
+The Pomodoro Focus Timer manages interrelated variables (`mode`, `status`, `timeLeft`, `completedSessions`). Managing these with multiple `useState` hooks easily causes race conditions. With `timerReducer`, every timer tick and mode switch is atomic:
+
+```jsx
+// src/components/FocusTimer.jsx
+export const timerReducer = (state, action) => {
+  switch (action.type) {
+    case 'START': return { ...state, status: 'running' };
+    case 'PAUSE': return { ...state, status: 'paused' };
+    case 'RESET': return { ...state, status: 'idle', timeLeft: DURATIONS[state.mode] };
+    case 'SET_MODE': return { ...state, mode: action.payload, status: 'idle', timeLeft: DURATIONS[action.payload] };
+    case 'TICK':
+      if (state.timeLeft <= 1) {
+        return {
+          ...state,
+          status: 'idle',
+          mode: state.mode === 'work' ? 'shortBreak' : 'work',
+          timeLeft: state.mode === 'work' ? DURATIONS.shortBreak : DURATIONS.work,
+          completedSessions: state.mode === 'work' ? state.completedSessions + 1 : state.completedSessions
+        };
+      }
+      return { ...state, timeLeft: state.timeLeft - 1 };
+    default: return state;
   }
 };
 ```
@@ -246,16 +289,46 @@ const taskReducer = (state, action) => {
 React is fast, but re-rendering huge lists on every keystroke is slow. We use `React.memo` (cache components), `useMemo` (cache calculations), and `useCallback` (cache functions) to optimize.
 
 ### FlowState Example
-`TaskPreview` is wrapped in `React.memo`. The `handleTaskComplete` function is wrapped in `useCallback`.
+`TaskPreview` and `ProjectCard` are wrapped in `React.memo`. The task filter calculation and stats calculations are wrapped in `useMemo`. Handlers passed as props use `useCallback`.
 
 ---
 
-## Section 10: Advanced State Management and Architecture
+## Section 10: Redux Toolkit (RTK) & Global State
 
-As FlowState grows to support a backend:
-- **Server State (React Query / RTK Query):** For fetching tasks from an API, handling loading states, and caching.
-- **URL State (React Router):** For sharing links to specific projects.
-- **Redux:** If state becomes globally complex and heavily interdependent.
+### What it is
+**Redux Toolkit (RTK)** is the official, opinionated standard for writing modern Redux logic. It provides:
+1. `configureStore`: Sets up a standardized store with Redux DevTools and immutability checks automatically.
+2. `createSlice`: Combines actions and reducers using Immer (allowing "mutating" syntax that writes immutable updates).
+3. `useSelector` & `useDispatch`: React hooks from `react-redux` to subscribe to and dispatch state changes.
+
+### Why Redux Toolkit in FlowState?
+While `TaskContext` handles the Task domain with `useReducer`, **Projects** and **Global Filters / Navigation** are cross-cutting concerns accessed by the Sidebar, AppHeader, and Dashboard.
+
+### Store Architecture in FlowState
+```text
+src/store/
+├── index.js               # configureStore({ reducer: { projects, filters } })
+└── slices/
+    ├── projectsSlice.js   # addProject, deleteProject, syncProjectStats
+    └── filtersSlice.js    # setSelectedProjectId, setPriorityFilter, setSearchQuery, setActiveTab
+```
+
+### FlowState Redux Slices:
+1. **`projectsSlice`**:
+   - Manages the project catalog.
+   - `syncProjectStats(tasks)`: Demonstrates cross-system synergy—reads tasks produced by `useReducer` and updates project completion percentages!
+2. **`filtersSlice`**:
+   - Manages active navigation tabs in `Sidebar` and search/priority filter criteria across the application.
+
+### State Comparison Matrix
+
+| Feature | `useState` | `useReducer` | Redux Toolkit |
+| :--- | :--- | :--- | :--- |
+| **Scope** | Single component | Component or Context | Entire Application |
+| **Complexity** | Simple primitives / independent values | Coupled, multi-step state machines | Enterprise, multi-slice domains |
+| **Performance** | Triggers render on change | Triggers render on change | Selector-level re-render optimization |
+| **DevTools** | React DevTools | React DevTools | Redux DevTools (Time-Travel Debugging) |
+| **Use in FlowState** | Text inputs (`newTaskTitle`, `isModalOpen`) | Tasks collection & Pomodoro Timer | Projects catalog & Global UI Filters |
 
 ---
 
@@ -266,11 +339,11 @@ As FlowState grows to support a backend:
 3. **useState:** Add a text input to create tasks. (Completed)
 4. **State sharing:** Lift state to `App.jsx`. (Completed)
 5. **useEffect:** Save to `localStorage`. (Completed)
-6. **useRef:** Focus the input field. (Completed)
-7. **Context API:** Implement Dark Mode. (Completed)
-8. **useReducer:** Move tasks to `TaskContext`. (Completed)
-9. **Performance:** Apply `React.memo`. (Completed)
-10. **Advanced:** Plan API integration. (Completed)
+6. **useRef:** Focus the input field and preserve interval IDs. (Completed)
+7. **Context API:** Implement Dark Mode theme provider. (Completed)
+8. **useReducer:** Implement task domain reducer and timer state machine. (Completed)
+9. **Performance:** Apply `React.memo`, `useMemo`, and `useCallback`. (Completed)
+10. **Redux Toolkit:** Implement centralized Redux store, projects slice, filters slice, and cross-state sync. (Completed)
 
 ---
 

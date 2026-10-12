@@ -1,23 +1,19 @@
-import React, { useState } from 'react';
+import React from 'react';
 import Sidebar from './components/Sidebar';
 import AppHeader from './components/AppHeader';
 import Dashboard from './components/Dashboard';
-import { sampleProjects } from './data/initialData';
-import './index.css';
 
 function App() {
-  // Stage 8: Tasks have been moved to TaskContext!
-  // App no longer needs to manage task state or prop drill handlers down.
-  const [projects, setProjects] = useState(sampleProjects);
-
+  // Redux Toolkit now manages projects globally (in store/slices/projectsSlice)
+  // useReducer in TaskContext manages tasks globally
+  // useReducer in FocusTimer manages the Pomodoro state machine locally
+  // App serves as the clean top-level layout container.
   return (
     <div className="app-container">
       <Sidebar />
       <div className="main-content">
         <AppHeader />
-        
-        {/* We only pass projects now. Tasks are accessed directly via Context. */}
-        <Dashboard projects={projects} />
+        <Dashboard />
       </div>
     </div>
   );
